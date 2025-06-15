@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Potato Disease Predictor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background-image: url('https://www.albertapotatoes.ca/uploads/thumbnails/About_PGA.jpg.b4e27ba7.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    video, canvas, img {
+      width: 100%;
+      max-height: 250px;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .custom-card {
+      background: linear-gradient(135deg, green, white, gray, orange);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center bg-black bg-opacity-40">
+
+  <div class="custom-card p-6 rounded-xl max-w-md w-full text-center text-black">
+    <h1 class="text-3xl font-bold mb-4">Potato Leaf Disease Predictor</h1>
+
+    <div class="flex justify-center gap-4 mb-4">
+      <button onclick="startCamera()" class="bg-green-600 hover:bg-green-700 text-white text-base py-2 px-4 rounded">
+        Use Camera
+      </button>
+      <label class="bg-blue-600 hover:bg-blue-700 text-white text-base py-2 px-4 rounded cursor-pointer">
+        Upload
+        <input id="uploadInput" type="file" accept="image/*" class="hidden">
+      </label>
+    </div>
+
+    <!-- Camera video and capture -->
+    <video id="video" autoplay playsinline class="hidden"></video>
+    <button id="captureBtn" onclick="captureImage()" class="hidden bg-green-500 text-white text-base px-4 py-2 rounded mb-4">Capture</button>
+
+    <!-- Image preview -->
+    <div id="imagePreview" class="hidden">
+      <img id="previewImg" />
+    </div>
+
+    <button onclick="predictDisease()" class="bg-green-700 hover:bg-green-800 text-white text-base py-2 px-4 rounded w-full mb-2">
+      Predict
+    </button>
+
+    <div id="result" class="text-lg font-medium hidden"></div>
+    <div id="error" class="text-lg text-red-700 hidden mt-2"></div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const captureBtn = document.getElementById('captureBtn');
+    const previewImg = document.getElementById('previewImg');
+    const imagePreview = document.getElementById('imagePreview');
+    const uploadInput = document.getElementById('uploadInput');
+    const resultDiv = document.getElementById('result');
+    const errorDiv = document.getElementById('error');
+
+    let capturedBlob = null;
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        video.classList.remove('hidden');
+        captureBtn.classList.remove('hidden');
+        imagePreview.classList.add('hidden');
+        resultDiv.classList.add('hidden');
+        errorDiv.classList.add('hidden');
+      } catch (err) {
+        alert("Unable to access camera: " + err.message);
+      }
+    }
+
+    function captureImage() {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+
+      const stream = video.srcObject;
+      const tracks = stream.getTracks();
+      tracks.forEach(track => track.stop());
+      video.srcObject = null;
+      video.classList.add('hidden');
+      captureBtn.classList.add('hidden');
+
+      canvas.toBlob(blob => {
+        capturedBlob = blob;
+        const url = URL.createObjectURL(blob);
+        previewImg.src = url;
+        imagePreview.classList.remove('hidden');
+      }, 'image/jpeg');
+    }
+
+    uploadInput.addEventListener('change', function () {
+      const file = uploadInput.files[0];
+      if (file) {
+        capturedBlob = file;
+        const reader = new FileReader();
+        reader.onload = e => {
+          previewImg.src = e.target.result;
+          imagePreview.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    async function predictDisease() {
+      resultDiv.classList.add('hidden');
+      errorDiv.classList.add('hidden');
+
+      if (!capturedBlob) {
+        errorDiv.textContent = "Please capture or upload an image.";
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', capturedBlob, 'image.jpg');
+
+      try {
+        const response = await fetch('http://localhost:8080/predict', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) throw new Error("Server error");
+
+        const data = await response.json();
+
+        if (data.prediction === "undefined") {
+          resultDiv.innerHTML = `<div>Prediction: <strong>Could not identify disease confidently.</strong></div>`;
+        } else {
+          resultDiv.innerHTML = `
+            <div>Predicted Disease: <strong>${data.prediction}</strong></div>
+            <div>Confidence: <strong>${(data.confidence * 100).toFixed(2)}%</strong></div>
+          `;
+        }
+
+        resultDiv.classList.remove('hidden');
+      } catch (err) {
+        errorDiv.textContent = "Prediction failed. Please check the server.";
+        errorDiv.classList.remove('hidden');
+      }
+    }
+  </script>
+
+</body>
+</html>
